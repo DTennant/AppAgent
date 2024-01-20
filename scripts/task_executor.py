@@ -10,7 +10,7 @@ import time
 import prompts
 from config import load_config
 from and_controller import list_all_devices, AndroidController, traverse_tree
-from model import ask_gpt4v, parse_explore_rsp, parse_grid_rsp
+from model import ask_gpt4v, parse_explore_rsp, parse_grid_rsp, ask_gpt4v_azure
 from utils import print_with_color, draw_bbox_multi, encode_image, draw_grid
 
 arg_desc = "AppAgent Executor"
@@ -202,7 +202,7 @@ while round_count < configs["MAX_ROUNDS"]:
         }
     ]
     print_with_color("Thinking about what to do in the next step...", "yellow")
-    rsp = ask_gpt4v(content)
+    rsp = ask_gpt4v_azure(content)
 
     if "error" not in rsp:
         with open(log_path, "a") as logfile:

@@ -1,36 +1,85 @@
 import re
+import json
 import requests
+from openai import AzureOpenAI
+from tenacity import retry, stop_after_attempt, wait_random_exponential
+
+
+client = AzureOpenAI(
+    azure_endpoint="https://openai-vlaa-westus.openai.azure.com/",  # west us
+    # api_key="70c5b839665e4e6a8cd27876e1aa6d51",  # east us 2
+    api_key="0276e5b9e7fe497294c347fafaa6ad4b",  # west us
+    api_version="2023-05-15",
+)
+def _log_when_fail(retry_state):
+    print(
+        "Request failed. Current retry attempts:{}. Sleep for {:.2f}. Exception: {}".format(
+            retry_state.attempt_number, retry_state.idle_for, repr(
+                retry_state.outcome.exception())
+        )
+    )
+
+
+generate_with_retry = retry(
+    wait=wait_random_exponential(min=1, max=5),
+    stop=stop_after_attempt(15),
+    before_sleep=_log_when_fail
+)(client.chat.completions.create)
+
 
 from config import load_config
 from utils import print_with_color
 
 configs = load_config()
 
+def ask_gpt4v_azure(content):
+    temp = configs['TEMPERATURE']
+    max_tokens = configs['MAX_TOKENS']
+    # response = client.chat.completions.create(
+    response = generate_with_retry(
+        model="gpt-4-vision-preview",
+        messages=[
+            {
+                "role": "user",
+                "content": content,
+            }
+        ],
+        max_tokens=max_tokens,
+        temperature=temp,
+    )
+    response_json = json.loads(response.json())
+    if "error" not in response_json:
+        usage = response_json["usage"]
+        prompt_tokens = usage["prompt_tokens"]
+        completion_tokens = usage["completion_tokens"]
+        print_with_color(
+            f"Request cost is "
+            f"${'{0:.2f}'.format(prompt_tokens / 1000 * 0.01 + completion_tokens / 1000 * 0.03)}",
+            "yellow",
+        )
+    return response_json
 
 def ask_gpt4v(content):
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {configs['OPENAI_API_KEY']}"
+        "Authorization": f"Bearer {configs['OPENAI_API_KEY']}",
     }
     payload = {
         "model": configs["OPENAI_API_MODEL"],
-        "messages": [
-            {
-                "role": "user",
-                "content": content
-            }
-        ],
+        "messages": [{"role": "user", "content": content}],
         "temperature": configs["TEMPERATURE"],
-        "max_tokens": configs["MAX_TOKENS"]
+        "max_tokens": configs["MAX_TOKENS"],
     }
     response = requests.post(configs["OPENAI_API_BASE"], headers=headers, json=payload)
     if "error" not in response.json():
         usage = response.json()["usage"]
         prompt_tokens = usage["prompt_tokens"]
         completion_tokens = usage["completion_tokens"]
-        print_with_color(f"Request cost is "
-                         f"${'{0:.2f}'.format(prompt_tokens / 1000 * 0.01 + completion_tokens / 1000 * 0.03)}",
-                         "yellow")
+        print_with_color(
+            f"Request cost is "
+            f"${'{0:.2f}'.format(prompt_tokens / 1000 * 0.01 + completion_tokens / 1000 * 0.03)}",
+            "yellow",
+        )
     return response.json()
 
 
@@ -74,7 +123,9 @@ def parse_explore_rsp(rsp):
             print_with_color(f"ERROR: Undefined act {act_name}!", "red")
             return ["ERROR"]
     except Exception as e:
-        print_with_color(f"ERROR: an exception occurs while parsing the model response: {e}", "red")
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
         print_with_color(rsp, "red")
         return ["ERROR"]
 
@@ -113,14 +164,23 @@ def parse_grid_rsp(rsp):
             start_subarea = params[1].strip()[1:-1]
             end_area = int(params[2].strip())
             end_subarea = params[3].strip()[1:-1]
-            return [act_name + "_grid", start_area, start_subarea, end_area, end_subarea, last_act]
+            return [
+                act_name + "_grid",
+                start_area,
+                start_subarea,
+                end_area,
+                end_subarea,
+                last_act,
+            ]
         elif act_name == "grid":
             return [act_name]
         else:
             print_with_color(f"ERROR: Undefined act {act_name}!", "red")
             return ["ERROR"]
     except Exception as e:
-        print_with_color(f"ERROR: an exception occurs while parsing the model response: {e}", "red")
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
         print_with_color(rsp, "red")
         return ["ERROR"]
 
@@ -145,6 +205,8 @@ def parse_reflect_rsp(rsp):
             print_with_color(f"ERROR: Undefined decision {decision}!", "red")
             return ["ERROR"]
     except Exception as e:
-        print_with_color(f"ERROR: an exception occurs while parsing the model response: {e}", "red")
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
         print_with_color(rsp, "red")
         return ["ERROR"]

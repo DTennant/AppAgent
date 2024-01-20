@@ -10,7 +10,7 @@ import time
 import prompts
 from config import load_config
 from and_controller import list_all_devices, AndroidController, traverse_tree
-from model import ask_gpt4v, parse_explore_rsp, parse_reflect_rsp
+from model import ask_gpt4v, parse_explore_rsp, parse_reflect_rsp, ask_gpt4v_azure
 from utils import print_with_color, draw_bbox_multi, encode_image
 
 arg_desc = "AppAgent - Autonomous Exploration"
@@ -67,7 +67,8 @@ if not width and not height:
 print_with_color(f"Screen resolution of {device}: {width}x{height}", "yellow")
 
 print_with_color("Please enter the description of the task you want me to complete in a few sentences:", "blue")
-task_desc = input()
+# task_desc = input()
+task_desc = 'find the weather report of london in the next week'
 
 round_count = 0
 doc_count = 0
@@ -124,7 +125,8 @@ while round_count < configs["MAX_ROUNDS"]:
         }
     ]
     print_with_color("Thinking about what to do in the next step...", "yellow")
-    rsp = ask_gpt4v(content)
+    __import__("ipdb").set_trace()
+    rsp = ask_gpt4v_azure(content)
 
     if "error" not in rsp:
         with open(explore_log_path, "a") as logfile:
@@ -221,7 +223,7 @@ while round_count < configs["MAX_ROUNDS"]:
         }
     ]
     print_with_color("Reflecting on my previous action...", "yellow")
-    rsp = ask_gpt4v(content)
+    rsp = ask_gpt4v_azure(content)
     if "error" not in rsp:
         resource_id = elem_list[int(area) - 1].uid
         with open(reflect_log_path, "a") as logfile:

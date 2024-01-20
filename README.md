@@ -1,3 +1,11 @@
+## TODOs
+
+- [ ] Make an abstract of the agents
+- [ ] Add chrome as a controller
+      - [ ] Add more function to chrome controller
+
+
+
 # AppAgent
 
 <div align="center">
