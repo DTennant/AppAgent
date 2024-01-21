@@ -85,8 +85,9 @@ def traverse_tree(xml_path, elem_list, attrib, add_index=False):
         if event == 'end':
             path.pop()
 
+from controller_abs import Controller
 
-class AndroidController:
+class AndroidController(Controller):
     def __init__(self, device):
         self.device = device
         self.screenshot_dir = configs["ANDROID_SCREENSHOT_DIR"]

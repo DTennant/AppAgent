@@ -7,7 +7,8 @@ from playwright.sync_api import sync_playwright
 vimium_path = "./vimium-master"
 
 
-class Vimbot:
+from controller_abs import Controller
+class ChromeController(Controller):
     def __init__(self, headless=False):
         self.context = (
             sync_playwright()
@@ -58,7 +59,7 @@ class Vimbot:
         
     def get_screenshot(self, prefix, save_dir):
         image = self.capture(return_before=True)
-        
+
 
     def capture(self, return_before=False):
         if return_before:

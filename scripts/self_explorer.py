@@ -16,6 +16,7 @@ from utils import print_with_color, draw_bbox_multi, encode_image
 arg_desc = "AppAgent - Autonomous Exploration"
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=arg_desc)
 parser.add_argument("--app")
+parser.add_argument("--controller", default="android")
 parser.add_argument("--root_dir", default="./")
 args = vars(parser.parse_args())
 
@@ -78,6 +79,7 @@ task_complete = False
 while round_count < configs["MAX_ROUNDS"]:
     round_count += 1
     print_with_color(f"Round {round_count}", "yellow")
+    # observe env
     screenshot_before = controller.get_screenshot(f"{round_count}_before", task_dir)
     xml_path = controller.get_xml(f"{round_count}", task_dir)
     if screenshot_before == "ERROR" or xml_path == "ERROR":
