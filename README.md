@@ -1,8 +1,10 @@
 ## TODOs
 
-- [ ] Make an abstract of the agents
+- [x] Make an abstract of the agents
+- [ ] Make the abstract work for task executor and step recorder
+- [ ] Fix grid logic
 - [ ] Add chrome as a controller
-      - [ ] Add more function to chrome controller
+- [ ] Add more function to chrome controller
 
 
 

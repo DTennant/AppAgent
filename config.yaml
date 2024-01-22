@@ -7,6 +7,8 @@ REQUEST_INTERVAL: 0  # Time in seconds between consecutive GPT-4V requests
 
 ANDROID_SCREENSHOT_DIR: "/storage/emulated/0/Pictures"  # Set the directory on your Android device to store the intermediate screenshots. Make sure the directory EXISTS on your phone!
 ANDROID_XML_DIR: "/storage/emulated/0/Pictures"  # Set the directory on your Android device to store the intermediate XML files used for determining locations of UI elements on your screen. Make sure the directory EXISTS on your phone!
+  
+CHROME_HEADLESS: false  # Set this to true if you want to run the agent in headless mode
 
 DOC_REFINE: false  # Set this to true will make the agent refine existing documentation based on the latest demonstration; otherwise, the agent will not regenerate a new documentation for elements with the same resource ID.
 MAX_ROUNDS: 20  # Set the round limit for the agent to complete the task

@@ -35,7 +35,9 @@ def get_controller(controller_type):
             print_with_color("ERROR: Invalid device size!", "red")
             sys.exit()
         print_with_color(f"Screen resolution of {device}: {width}x{height}", "yellow")
-        return controller
+        return controller, width, height
 
-    else:
-        ...
+    elif controller_type == 'chrome':
+        controller = ChromeController()
+        width, height = controller.get_device_size()
+        return controller, width, height

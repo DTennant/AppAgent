@@ -40,7 +40,7 @@ understanding of the function of the UI element derived from the given screensho
 because the function of a UI element can be flexible. In this case, your generated description should combine both.
 Old documentation of this UI element: <old_doc>"""
 
-task_template = """You are an agent that is trained to perform some basic tasks on a smartphone. You will be given a 
+task_template_grid = """You are an agent that is trained to perform some basic tasks on a smartphone. You will be given a 
 smartphone screenshot. The interactive UI elements on the screenshot are labeled with numeric tags starting from 1. The 
 numeric tag of each interactive element is located in the center of the element.
 
@@ -90,7 +90,7 @@ Summary: <Summarize your past actions along with your latest action in one or tw
 tag in your summary>
 You can only take one action at a time, so please directly call the function."""
 
-task_template_grid = """You are an agent that is trained to perform some basic tasks on a smartphone. You will be given 
+task_template = """You are an agent that is trained to perform some basic tasks on a smartphone. You will be given 
 a smartphone screenshot overlaid by a grid. The grid divides the screenshot into small square areas. Each area is 
 labeled with an integer in the top-left corner.
 

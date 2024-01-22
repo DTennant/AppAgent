@@ -12,8 +12,9 @@ from config import load_config
 from and_controller import list_all_devices, AndroidController, traverse_tree
 from chrome_controller import ChromeController
 from controller import get_controller
-from model import ask_gpt4v, parse_explore_rsp, parse_reflect_rsp, ask_gpt4v_azure
-from utils import print_with_color, draw_bbox_multi, encode_image
+from model import ask_gpt4v, parse_explore_rsp, parse_reflect_rsp, parse_grid_rsp, ask_gpt4v_azure
+from utils import print_with_color, draw_bbox_multi, encode_image, draw_grid
+
 
 
 class Environment:
@@ -21,7 +22,7 @@ class Environment:
         self.args = args
         self.configs = configs
 
-        self.controller = get_controller(args["controller"])
+        self.controller, self.width, self.height = get_controller(args["controller"])
         self.max_round = configs["MAX_ROUNDS"]
 
         self.round = 0
@@ -34,14 +35,48 @@ class Environment:
 
     def get_observation(self, task_dir):
         ...
+    
+    def perform_action(
+        self,
+        act_name,
+        res,
+    ):
+        ...
 
 
 class AndroidEnvironment(Environment):
     def __init__(self, args, configs):
         super().__init__(args, configs)
         self.elem_list = []
+        self.add_grid = args["use_grid"]
+        # add_grid will be determined by the model to use grid or not
+        # self.add_grid = False
 
-    def get_observation(self, task_dir, mode="before", get_elem=True):
+    def area_to_xy(self, area, subarea):
+        area -= 1
+        row, col = area // self.cols, area % self.cols
+        x_0, y_0 = col * (self.width // self.cols), row * (self.height // self.rows)
+        if subarea == "top-left":
+            x, y = x_0 + (self.width // self.cols) // 4, y_0 + (self.height // self.rows) // 4
+        elif subarea == "top":
+            x, y = x_0 + (self.width // self.cols) // 2, y_0 + (self.height // self.rows) // 4
+        elif subarea == "top-right":
+            x, y = x_0 + (self.width // self.cols) * 3 // 4, y_0 + (self.height // self.rows) // 4
+        elif subarea == "left":
+            x, y = x_0 + (self.width // self.cols) // 4, y_0 + (self.height // self.rows) // 2
+        elif subarea == "right":
+            x, y = x_0 + (self.width // self.cols) * 3 // 4, y_0 + (self.height // self.rows) // 2
+        elif subarea == "bottom-left":
+            x, y = x_0 + (self.width // self.cols) // 4, y_0 + (self.height // self.rows) * 3 // 4
+        elif subarea == "bottom":
+            x, y = x_0 + (self.width // self.cols) // 2, y_0 + (self.height // self.rows) * 3 // 4
+        elif subarea == "bottom-right":
+            x, y = x_0 + (self.width // self.cols) * 3 // 4, y_0 + (self.height // self.rows) * 3 // 4
+        else:
+            x, y = x_0 + (self.width // self.cols) // 2, y_0 + (self.height // self.rows) // 2
+        return x, y
+
+    def get_observation(self, task_dir, mode="before", get_elem=True, ):
         # Get the observation from the environment
         screenshot_before = self.controller.get_screenshot(
             f"{self.round}_{mode}", task_dir
@@ -50,6 +85,11 @@ class AndroidEnvironment(Environment):
         if screenshot_before == "ERROR" or xml_path == "ERROR":
             return "ERROR"
             # break
+        if self.add_grid:
+            grid_path = os.path.join(task_dir, f"{self.round}_{mode}_grid.png")
+            self.rows, self.cols = draw_grid(screenshot_before, grid_path)
+            return grid_path
+
         if get_elem:
             clickable_list = []
             focusable_list = []
@@ -80,13 +120,14 @@ class AndroidEnvironment(Environment):
                         break
                 if not close:
                     self.elem_list.append(elem)
+        label_path = os.path.join(task_dir, f"{self.round}_{mode}_labeled.png")
         draw_bbox_multi(
             screenshot_before,
-            os.path.join(task_dir, f"{self.round}_{mode}_labeled.png"),
+            label_path,
             self.elem_list,
             dark_mode=self.configs["DARK_MODE"],
         )
-        return os.path.join(task_dir, f"{self.round}_{mode}_labeled.png")
+        return label_path
 
     def perform_action(
         self,
@@ -127,11 +168,61 @@ class AndroidEnvironment(Environment):
             if ret == "ERROR":
                 print_with_color("ERROR: swipe execution failed", "red")
                 exit(1)
+        elif act_name == "grid":
+            grid_on = True
+        elif act_name == "tap_grid" or act_name == "long_press_grid":
+            _, area, subarea = res
+            x, y = self.area_to_xy(area, subarea)
+            if act_name == "tap_grid":
+                ret = self.controller.tap(x, y)
+                if ret == "ERROR":
+                    print_with_color("ERROR: tap execution failed", "red")
+                    exit(1)
+            else:
+                ret = self.controller.long_press(x, y)
+                if ret == "ERROR":
+                    print_with_color("ERROR: tap execution failed", "red")
+                    exit(1)
+        elif act_name == "swipe_grid":
+            _, start_area, start_subarea, end_area, end_subarea = res
+            start_x, start_y = self.area_to_xy(start_area, start_subarea)
+            end_x, end_y = self.area_to_xy(end_area, end_subarea)
+            ret = self.controller.swipe_precise((start_x, start_y), (end_x, end_y))
+            if ret == "ERROR":
+                print_with_color("ERROR: tap execution failed", "red")
+                exit(1)
         else:
             print_with_color(f"ERROR: Undefined act {act_name}!", "red")
             exit(1)
 
+        if act_name != "grid":
+            grid_on = False
+        self.add_grid = grid_on
 
+
+class ChromeEnvironment(Environment):
+    def __init__(self, args, configs):
+        super().__init__(args, configs)
+        
+    def get_observation(self, task_dir, mode="before"):
+        # Get the observation from the environment
+        screenshot_before = self.controller.get_screenshot(
+            f"{self.round}_{mode}", task_dir, return_before=True
+        )
+        if screenshot_before == "ERROR":
+            return "ERROR"
+        label_path = os.path.join(task_dir, f"{self.round}_{mode}_labeled.png")
+        self.controller.get_screenshot(
+            f"{self.round}_{mode}", task_dir, return_before=False
+        )
+        return screenshot_before
+    
+    def perform_action(
+        self,
+        act_name,
+        res,
+    ):
+        pass
 
 class TaskAgent:
     """
@@ -198,14 +289,25 @@ class TaskAgent:
         self.doc_count = 0
         self.task_complete = False
         self.act_name = None
+        
+        self.self_explore = args["self_explore"]
+        self.use_grid = args["use_grid"]
 
     def take_user_instruction(self, instruction):
         # Take in user instruction and process it
         self.task_desc = instruction
+        
+    def get_prompt_template(self):
+        if self.use_grid:
+            return prompts.task_template_grid
+        if self.self_explore:
+            return prompts.self_explore_task_template
+        return prompts.task_template
 
     def act(self, obs, env):
+        prompt_temp = self.get_prompt_template()
         prompt = re.sub(
-            r"<task_description>", self.task_desc, prompts.self_explore_task_template
+            r"<task_description>", self.task_desc, prompt_temp
         )
         prompt = re.sub(r"<last_act>", self.last_act, prompt)
         self.base64_img_before = encode_image(obs)
@@ -232,7 +334,10 @@ class TaskAgent:
                     "response": self.rsp,
                 }
                 logfile.write(json.dumps(log_item) + "\n")
-            res = parse_explore_rsp(self.rsp)
+            if self.use_grid:
+                res = parse_grid_rsp(self.rsp)
+            else:
+                res = parse_explore_rsp(self.rsp)
             self.act_name = res[0]
             self.last_act = res[-1]
             self.res = res[:-1]
@@ -242,6 +347,9 @@ class TaskAgent:
             self.res = []
         if self.act_name == 'FINISH':
             self.task_complete = True
+            
+        if self.act_name == 'grid':
+            self.use_grid = True
 
         return self.rsp
 
