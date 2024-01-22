@@ -179,6 +179,134 @@ Summary: <Summarize your past actions along with your latest action in one or tw
 tag in your summary>
 You can only take one action at a time, so please directly call the function."""
 
+chrome_task_template = """
+You are an AI agent trained to perform web browsing tasks using Chrome. 
+You will be given a screenshot of the current state of the web browser and a second screenshot with each interactive element marked with an unique identifier. 
+The interactive elements on the webpage are identified by unique identifiers in the yellow box besides the elements.
+If only one screenshot is given, it is because the browser is currently focusing on an input field. You would most likely to call the type() function to type text into the input field.
+Currently, <if_focused>
+
+You can call the following functions to control the web browser:
+
+1. navigate(url: str): Navigates the browser to a specified URL. 
+   Example usage: navigate(https://www.example.com).
+
+2. click(selector: str): Clicks an element on the page identified by an unique identifier labeled in the yellow string. 
+   Example usage: click(SD).
+
+3. click_type(selector: str, text: str): Types text into one element on the page identified by an unique identifier. 
+   Please be sure to put the text in "".
+   Example usage: click_type(SD, "Hello, world!").
+   
+4. enter(): Presses the enter key on the keyboard.
+   Example usage: enter(). You can use this after typing text into an input field to submit the text.
+
+5. scroll(direction: str): Scrolls the webpage in a specified direction. 
+   The direction can be "up" or "down". Example usage: scroll(down).
+
+The task you need to complete is to <task_description>. 
+Your past actions to proceed with this task are summarized as follows: <last_act>
+
+Now, given the current state of the web browser in a labeled screenshot, 
+you need to think and call the function needed to proceed with the task. 
+Your output should include three parts in the given format:
+
+- Observation: <Describe what you observe on the webpage>
+- Thought: <To complete the given task, what is the next step I should do>
+- Action: <The function call with the correct parameters to proceed with the task. If you believe the task is completed or there is nothing to be done, you should output FINISH. You cannot output anything else except a function call or FINISH in this field.>
+- Summary: <Summarize your past actions along with your latest action in one or two sentences.>
+
+If you think the task is already done, output 'FINISH'
+
+Note: You can only take one action at a time, so please directly call the function.
+"""
+
+chrome_self_explore_reflect_template = """
+I will give you screenshots of a web page before and after <action> the interactive elements identified by '<ui_element>' on the first web page. 
+The action of <action> this element was described as follows:
+<last_act>
+The action was also an attempt to proceed with a larger task, which is to <task_desc>. Your job is to carefully analyze 
+the difference between the two states of the web page to determine if the action is in accord with the description above 
+and at the same time effectively moved the task forward. Your output should be determined based on the following situations:
+1. BACK
+If you think the action navigated you to a page where you cannot proceed with the given task, you should go back to the 
+previous page. At the same time, describe the functionality of the element concisely in one or two sentences by 
+observing the difference between the two states. Notice that your description of the element should focus on 
+the general function. Never include the identifier of the element in your description. You can use terms such as 
+"the element" to refer to it. Your output should be in the following format:
+Decision: BACK
+Thought: <explain why you think the last action is wrong and you should go back to the previous page>
+Documentation: <describe the function of the element>
+2. INEFFECTIVE
+If you find the action changed nothing on the screen (states before and after the action are identical), you 
+should continue to interact with other elements on the screen. Notice that if you find the location of the cursor 
+changed between the two states, then they are not identical. Your output should be in the following format:
+Decision: INEFFECTIVE
+Thought: <explain why you made this decision>
+3. CONTINUE
+If you find the action changed something on the screen but does not reflect the action description above and did not 
+move the given task forward, you should continue to interact with other elements on the screen. At the same time, 
+describe the functionality of the element concisely in one or two sentences by observing the difference between the 
+two states. Notice that your description of the element should focus on the general function. Never include the 
+identifier of the element in your description. You can use terms such as "the element" to refer to it. Your output 
+should be in the following format:
+Decision: CONTINUE
+Thought: <explain why you think the action does not reflect the action description above and did not move the given 
+task forward>
+Documentation: <describe the function of the element>
+4. SUCCESS
+If you think the action successfully moved the task forward (even though it did not complete the task), you should 
+describe the functionality of the element concisely in one or two sentences. Notice that your description of the 
+element should focus on the general function. Never include the identifier of the element in your description. You 
+can use terms such as "the element" to refer to it. Your output should be in the following format:
+Decision: SUCCESS
+Thought: <explain why you think the action successfully moved the task forward>
+Documentation: <describe the function of the element>
+"""
+
+chrome_self_explore_reflect_noelement_template = """
+I will give you screenshots of a web page before and after <action>. 
+The action of <action> this element was described as follows:
+<last_act>
+The action was also an attempt to proceed with a larger task, which is to <task_desc>. Your job is to carefully analyze 
+the difference between the two states of the web page to determine if the action is in accord with the description above 
+and at the same time effectively moved the task forward. Your output should be determined based on the following situations:
+1. BACK
+If you think the action navigated you to a page where you cannot proceed with the given task, you should go back to the 
+previous page. At the same time, describe the functionality of the element concisely in one or two sentences by 
+observing the difference between the two states. Notice that your description of the element should focus on 
+the general function. Never include the identifier of the element in your description. You can use terms such as 
+"the element" to refer to it. Your output should be in the following format:
+Decision: BACK
+Thought: <explain why you think the last action is wrong and you should go back to the previous page>
+Documentation: <describe the function of the element>
+2. INEFFECTIVE
+If you find the action changed nothing on the screen (states before and after the action are identical), you 
+should continue to interact with other elements on the screen. Notice that if you find the location of the cursor 
+changed between the two states, then they are not identical. Your output should be in the following format:
+Decision: INEFFECTIVE
+Thought: <explain why you made this decision>
+3. CONTINUE
+If you find the action changed something on the screen but does not reflect the action description above and did not 
+move the given task forward, you should continue to interact with other elements on the screen. At the same time, 
+describe the functionality of the element concisely in one or two sentences by observing the difference between the 
+two states. Notice that your description of the element should focus on the general function. Never include the 
+identifier of the element in your description. You can use terms such as "the element" to refer to it. Your output 
+should be in the following format:
+Decision: CONTINUE
+Thought: <explain why you think the action does not reflect the action description above and did not move the given 
+task forward>
+Documentation: <describe the function of the element>
+4. SUCCESS
+If you think the action successfully moved the task forward (even though it did not complete the task), you should 
+describe the functionality of the element concisely in one or two sentences. Notice that your description of the 
+element should focus on the general function. Never include the identifier of the element in your description. You 
+can use terms such as "the element" to refer to it. Your output should be in the following format:
+Decision: SUCCESS
+Thought: <explain why you think the action successfully moved the task forward>
+Documentation: <describe the function of the element>
+"""
+
 self_explore_reflect_template = """I will give you screenshots of a mobile app before and after <action> the UI 
 element labeled with the number '<ui_element>' on the first screenshot. The numeric tag of each element is located at 
 the center of the element. The action of <action> this UI element was described as follows:
@@ -221,3 +349,6 @@ Decision: SUCCESS
 Thought: <explain why you think the action successfully moved the task forward>
 Documentation: <describe the function of the UI element>
 """
+
+
+

@@ -13,6 +13,7 @@ from and_controller import list_all_devices, AndroidController, traverse_tree
 from chrome_controller import ChromeController
 from controller import get_controller
 from model import ask_gpt4v, parse_explore_rsp, parse_reflect_rsp, parse_grid_rsp, ask_gpt4v_azure
+from model import parse_chrome_rsp
 from utils import print_with_color, draw_bbox_multi, encode_image, draw_grid
 
 
@@ -204,25 +205,52 @@ class ChromeEnvironment(Environment):
     def __init__(self, args, configs):
         super().__init__(args, configs)
         
-    def get_observation(self, task_dir, mode="before"):
+    def is_focused(self):
+        return self.controller.is_focused()
+        
+    def get_observation(self, task_dir, mode="before", get_elem=True,):
         # Get the observation from the environment
         screenshot_before = self.controller.get_screenshot(
             f"{self.round}_{mode}", task_dir, return_before=True
         )
+        if self.controller.is_focused():
+            return [screenshot_before]
         if screenshot_before == "ERROR":
             return "ERROR"
-        label_path = os.path.join(task_dir, f"{self.round}_{mode}_labeled.png")
-        self.controller.get_screenshot(
-            f"{self.round}_{mode}", task_dir, return_before=False
+        screenshot_label = self.controller.get_screenshot(
+            f"{self.round}_{mode}_label", task_dir, return_before=False
         )
-        return screenshot_before
+        return [screenshot_before, screenshot_label]
     
     def perform_action(
         self,
         act_name,
         res,
     ):
-        pass
+        if act_name == 'FINISH':
+            task_complete = True
+            # break
+            # return finished
+        if act_name == 'navigate':
+            _, url = res
+            self.controller.navigate(url)
+        elif act_name == 'click':
+            _, area = res
+            self.controller.click(area)
+        elif act_name == 'click_type':
+            _, area, input_str = res
+            self.controller.click(area)
+            self.controller.type(input_str)
+            self.controller.enter()
+        elif act_name == 'enter':
+            self.controller.enter()
+        elif act_name == 'scroll':
+            _, direction = res
+            self.controller.scroll(direction)
+        else:
+            print_with_color(f"ERROR: Undefined act {act_name}!", "red")
+            return ["ERROR"]
+        
 
 class TaskAgent:
     """
@@ -297,7 +325,9 @@ class TaskAgent:
         # Take in user instruction and process it
         self.task_desc = instruction
         
-    def get_prompt_template(self):
+    def get_prompt_template(self, env):
+        if isinstance(env, ChromeEnvironment):
+            return prompts.chrome_task_template
         if self.use_grid:
             return prompts.task_template_grid
         if self.self_explore:
@@ -305,21 +335,47 @@ class TaskAgent:
         return prompts.task_template
 
     def act(self, obs, env):
-        prompt_temp = self.get_prompt_template()
+        # __import__("ipdb").set_trace()
+        prompt_temp = self.get_prompt_template(env)
+        if env.is_focused():
+            prompt = re.sub(r"<if_focused>", "There is a focused text box.", prompt_temp)
+        else:
+            prompt = re.sub(r"<if_focused>", "There is no focused text box.", prompt_temp)
+
         prompt = re.sub(
-            r"<task_description>", self.task_desc, prompt_temp
+            r"<task_description>", self.task_desc, prompt
         )
         prompt = re.sub(r"<last_act>", self.last_act, prompt)
-        self.base64_img_before = encode_image(obs)
-        content = [
-            {"type": "text", "text": prompt},
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{self.base64_img_before}"
+        if len(obs) == 2:
+            self.base64_img_before = encode_image(obs[0])
+            self.base64_img_before_label = encode_image(obs[1])
+            content = [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{self.base64_img_before}"
+                    },
                 },
-            },
-        ]
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{self.base64_img_before_label}"
+                    },
+                },
+            ]
+        elif len(obs) == 1:
+            self.base64_img_before = encode_image(obs[0])
+            content = [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{self.base64_img_before}"
+                    },
+                },
+            ]
+
         print_with_color("Thinking about what to do in the next step...", "yellow")
 
         # Take action based on the observation
@@ -336,8 +392,15 @@ class TaskAgent:
                 logfile.write(json.dumps(log_item) + "\n")
             if self.use_grid:
                 res = parse_grid_rsp(self.rsp)
-            else:
+            elif not isinstance(env, ChromeEnvironment):
                 res = parse_explore_rsp(self.rsp)
+            else:
+                res = parse_chrome_rsp(self.rsp)
+            # if res[0] == 'type':
+            #     # NOTE: handle for chrome type
+            #     assert self.act_name == 'click', 'before typing, you should click on the input box'
+            #     self.typing_area = res[1]
+
             self.act_name = res[0]
             self.last_act = res[-1]
             self.res = res[:-1]
@@ -345,6 +408,7 @@ class TaskAgent:
             self.act_name = "ERROR"
             self.last_act = "None"
             self.res = []
+            
         if self.act_name == 'FINISH':
             self.task_complete = True
             
@@ -354,9 +418,88 @@ class TaskAgent:
         return self.rsp
 
     def reflect(self, obs, env):
+        # TODO: implement this for chrome
+        raise NotImplementedError
         # Reflect on the action taken
         self.base64_img_after = encode_image(obs)
-
+        if isinstance(env, AndroidEnvironment):
+            return self.reflect_android(obs, env)
+        elif isinstance(env, ChromeEnvironment):
+            return self.reflect_chrome(obs, env)
+        
+    def reflect_chrome(self, obs, env):
+        if self.act_name == "navigate":
+            _, url = self.res
+            prompt = re.sub(
+                r"<action>", f"navigating to {url}", prompts.chrome_self_explore_reflect_noelement_template
+            )
+        elif self.act_name == 'click':
+            _, area = self.res
+            prompt = re.sub(
+                r"<action>", "clicking", prompts.chrome_self_explore_reflect_template
+            )
+            prompt = re.sub(r"<ui_element>", area, prompt)
+        elif self.act_name == 'type':
+            _, input_str = self.res
+            prompt = re.sub(
+                r"<action>", "typing", prompts.chrome_self_explore_reflect_template
+            )
+            prompt = re.sub(r"<ui_element>", self.typing_area, prompt)
+        elif self.act_name == 'enter':
+            prompt = re.sub(
+                r"<action>", "pressing enter", prompts.chrome_self_explore_reflect_noelement_template
+            )
+        elif self.act_name == 'scroll':
+            _, direction = self.res
+            prompt = re.sub(
+                r"<action>", f"scrolling {direction}", prompts.chrome_self_explore_reflect_noelement_template
+            )
+            
+        prompt = re.sub(r"<task_desc>", self.task_desc, prompt)
+        prompt = re.sub(r"<last_act>", self.last_act, prompt)
+        
+        content = [
+            {"type": "text", "text": prompt},
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{self.base64_img_before}"
+                },
+            },
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{self.base64_img_after}"},
+            },
+        ]
+        print_with_color("Reflecting on my previous action...", "yellow")
+        self.rsp = ask_gpt4v_azure(content)
+        
+        if 'error' not in self.rsp:
+            # NOTE: not doing doc generation for chrome for now
+            with open(self.reflect_log_path, "a") as logfile:
+                log_item = {
+                    "step": env.round,
+                    "prompt": prompt,
+                    "image_before": f"{env.round}_before_labeled.png",
+                    "image_after": f"{env.round}_after.png",
+                    "response": self.rsp,
+                }
+                logfile.write(json.dumps(log_item) + "\n")
+            res = parse_reflect_rsp(self.rsp)
+            decision = res[0]
+            
+            # TODO: handle reflect for chrome
+            # if decision == "ERROR":
+            #     return "error"
+            
+            # if decision == "INEFFECTIVE":
+            #     self.last_act = "None"
+            #     return 'continue'
+            # elif decision in ['BACK', 'CONTINUE', 'SUCCESS']:
+            #     if decision in ['BACK', 'CONTINUE']:
+            #         pass
+        
+    def reflect_android(self, obs, env):
         if self.act_name == "tap":
             _, area = self.res
             prompt = re.sub(

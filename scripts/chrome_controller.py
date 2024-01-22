@@ -42,6 +42,21 @@ class ChromeController(Controller):
         self.screenshot_dir = configs["ANDROID_SCREENSHOT_DIR"]
         self.xml_dir = configs["ANDROID_XML_DIR"]
         self.navigate("https://www.google.com")
+        self.inject_highlight_css()
+        # get rid of the google privacy policy
+        self.page.keyboard.press("Escape")
+        self.page.keyboard.press('f')
+        time.sleep(1)
+        self.page.keyboard.press('K')
+        
+    def is_focused(self):
+        is_focused = self.page.evaluate("""
+            var textboxes = document.querySelectorAll('input[type="text"]');
+            var activeElement = document.activeElement;
+            Array.from(textboxes).some(textbox => textbox === activeElement);
+        """)  # The last expression's value is returned
+        
+        return is_focused
         
     def get_device_size(self):
         return self.size["width"], self.size["height"]
@@ -52,9 +67,13 @@ class ChromeController(Controller):
         image.save(save_path)
         return save_path
 
-    def capture(self, return_before=False):
-        if return_before:
+    def capture(self, return_before=False, highlight_focused_element=True):
+        if return_before or self.is_focused():
+            if highlight_focused_element:
+                self.highlight_focused_element()
             screenshot_before = Image.open(BytesIO(self.page.screenshot())).convert("RGB")
+            if highlight_focused_element:
+                self.remove_highlight_from_focused_element()
             return screenshot_before
         # capture a screenshot with vim bindings on the screen
         self.page.keyboard.press("Escape")
@@ -63,31 +82,48 @@ class ChromeController(Controller):
         screenshot = Image.open(BytesIO(self.page.screenshot())).convert("RGB")
         return screenshot
 
-    def perform_action(self, action):
-        if "done" in action:
-            return True
-        if "click" in action and "type" in action:
-            self.click(action["click"])
-            self.type(action["type"])
-        if "navigate" in action:
-            self.navigate(action["navigate"])
-        elif "type" in action:
-            self.type(action["type"])
-        elif "click" in action:
-            self.click(action["click"])
-
     def navigate(self, url):
         self.page.goto(url=url if "://" in url else "https://" + url, timeout=60000)
 
     def type(self, text):
         time.sleep(1)
         self.page.keyboard.type(text)
+        # self.page.keyboard.press("Enter")
+    
+    def enter(self):
         self.page.keyboard.press("Enter")
         
     def scroll(self, direction):
         self.page.keyboard.press("Escape")
         self.page.keyboard.press("Escape")
+        if direction == "down":
+            self.page.keyboard.type("d")
+        elif direction == "up":
+            self.page.keyboard.type("u")
 
     def click(self, text):
         self.page.keyboard.type(text)
+
+    def inject_highlight_css(self):
+        css = """
+        .focused {
+            border: 2px solid blue; // Highlighting with a blue border
+            background-color: lightyellow; // Optional: Change background
+        }
+        """
+        self.page.add_style_tag(content=css)
+    
+    def highlight_focused_element(self):
+        script = """
+        var focusedElement = document.activeElement;
+        focusedElement.classList.add('focused');
+        """
+        self.page.evaluate(script)
+
+    def remove_highlight_from_focused_element(self):
+        script = """
+        var focusedElement = document.activeElement;
+        focusedElement.classList.remove('focused');
+        """
+        self.page.evaluate(script)
         

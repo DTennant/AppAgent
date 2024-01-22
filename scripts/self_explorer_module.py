@@ -20,7 +20,6 @@ parser.add_argument("--self-explore", default=True, type=ast.literal_eval)
 parser.add_argument("--root_dir", default="./")
 args = vars(parser.parse_args())
 
-__import__("ipdb").set_trace()
 configs = load_config()
 
 agent = TaskAgent(args, configs)
@@ -32,7 +31,7 @@ else:
     raise NotImplementedError
 
 print_with_color("Please enter the description of the task you want me to complete in a few sentences:", "blue")
-task_desc = 'find the weather report of london in the next week. Also please call grid() on the first call.'
+task_desc = 'find the weather report of london in the next week.'
 agent.take_user_instruction(task_desc)
 
 
@@ -52,8 +51,10 @@ while env.round < env.max_round:
     
     env.perform_action(agent.act_name, agent.res)
     
-    screenshot_after = env.get_observation(agent.task_dir, mode='after', get_elem=False)
-    agent.reflect(screenshot_after, env)
+    if args['controller'] == 'android':
+        # TODO: change the logic to: if not chrome type, then reflect
+        screenshot_after = env.get_observation(agent.task_dir, mode='after', get_elem=False)
+        agent.reflect(screenshot_after, env)
 
     time.sleep(configs["REQUEST_INTERVAL"])
 

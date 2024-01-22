@@ -128,6 +128,51 @@ def parse_explore_rsp(rsp):
         )
         print_with_color(rsp, "red")
         return ["ERROR"]
+    
+def parse_chrome_rsp(rsp):
+    try:
+        msg = rsp["choices"][0]["message"]["content"]
+        observation = re.findall(r"Observation: (.*?)$", msg, re.MULTILINE)[0]
+        think = re.findall(r"Thought: (.*?)$", msg, re.MULTILINE)[0]
+        act = re.findall(r"Action: (.*?)$", msg, re.MULTILINE)[0]
+        last_act = re.findall(r"Summary: (.*?)$", msg, re.MULTILINE)[0]
+        print_with_color("Observation:", "yellow")
+        print_with_color(observation, "magenta")
+        print_with_color("Thought:", "yellow")
+        print_with_color(think, "magenta")
+        print_with_color("Action:", "yellow")
+        print_with_color(act, "magenta")
+        print_with_color("Summary:", "yellow")
+        print_with_color(last_act, "magenta")
+        
+        if 'FINISH' in act:
+            return ['FINISH']
+        act_name = act.split('(')[0]
+        if act_name == 'navigate':
+            url = re.findall(r"navigate\((.*?)\)", act)[0][1:-1]
+            return [act_name, url, last_act]
+        elif act_name == 'click':
+            area = str(re.findall(r"click\((.*?)\)", act)[0])
+            return [act_name, area, last_act]
+        elif act_name == 'click_type':
+            __import__("ipdb").set_trace()
+            area, input_str = re.findall(r"click_type\((.*?),\s*\"(.*?)\"\)", act)[0]
+            return [act_name, area, input_str, last_act]
+        elif act_name == 'enter':
+            return [act_name, last_act]
+        elif act_name == 'scroll':
+            direction = re.findall(r"scroll\((.*?)\)", act)[0]
+            return [act_name, direction, last_act]
+        else:
+            print_with_color(f"ERROR: Undefined act {act_name}!", "red")
+            return ['ERROR']
+
+    except Exception as e:
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
+        print_with_color(rsp, "red")
+        return ["ERROR"]
 
 
 def parse_grid_rsp(rsp):

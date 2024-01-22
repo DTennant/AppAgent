@@ -1,10 +1,10 @@
 ## TODOs
 
 - [x] Make an abstract of the agents
-- [ ] Make the abstract work for task executor and step recorder
 - [ ] Fix grid logic
-- [ ] Add chrome as a controller
-- [ ] Add more function to chrome controller
+- [x] Add chrome as a controller (partial done)
+- [ ] Add more function to chrome controller, most important, add a function to search DOM to get accurate text
+- [ ] Make the abstract work for task executor and step recorder
 
 
 
